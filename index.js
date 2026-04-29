@@ -1,29 +1,20 @@
 const mineflayer = require('mineflayer')
 const fs = require('fs')
-const path = require('path')
 const { keepAlive } = require('./keep_alive')
 
 keepAlive()
 
-const configPath = path.join(__dirname, 'config.json')
+let rawdata = fs.readFileSync('config.json')
+let data = JSON.parse(rawdata)
 
-let data = {}
+const host = data.ip
+const username = data.name
+const port = data.port || 25565
+const version = data.version || false
 
-if (fs.existsSync(configPath)) {
-  data = JSON.parse(fs.readFileSync(configPath, 'utf8'))
-}
+let bot = null
+let reconnecting = false
 
-const host = process.env.MC_HOST || data.ip
-const username = process.env.MC_NAME || data.name
-const port = Number(process.env.MC_PORT || data.port || 25565)
-const version = process.env.MC_VERSION || data.version || false
-
-if (!host || !username) {
-  console.log('Ошибка: укажите ip и name в config.json или переменные MC_HOST и MC_NAME')
-  process.exit(1)
-}
-
-let bot
 let lasttime = -1
 let moving = 0
 let connected = 0
@@ -34,7 +25,9 @@ const pi = 3.14159
 const moveinterval = 2
 const maxrandom = 5
 
-function createBot() {
+function connectBot() {
+  console.log('Connecting to server...')
+
   bot = mineflayer.createBot({
     host: host,
     port: port,
@@ -42,16 +35,17 @@ function createBot() {
     version: version || undefined
   })
 
-  bot.on('login', () => {
+  bot.on('login', function () {
     console.log('Logged In')
   })
 
-  bot.on('spawn', () => {
+  bot.on('spawn', function () {
     connected = 1
+    reconnecting = false
     console.log('Bot spawned')
   })
 
-  bot.on('time', () => {
+  bot.on('time', function () {
     if (connected < 1) return
 
     if (lasttime < 0) {
@@ -68,10 +62,11 @@ function createBot() {
         moving = 0
         lasttime = bot.time.age
       } else {
-        const yaw = Math.random() * pi - (0.5 * pi)
-        const pitch = Math.random() * pi - (0.5 * pi)
+        const yaw = Math.random() * pi - 0.5 * pi
+        const pitch = Math.random() * pi - 0.5 * pi
 
         bot.look(yaw, pitch, false)
+
         lastaction = actions[Math.floor(Math.random() * actions.length)]
         bot.setControlState(lastaction, true)
 
@@ -80,29 +75,41 @@ function createBot() {
 
         try {
           bot.activateItem()
-        } catch (e) {
-          // Иногда предмета в руке нет — это не критично.
-        }
+        } catch (err) {}
       }
     }
   })
 
-  bot.on('kicked', (reason) => {
-    console.log('Kicked:', reason)
+  bot.on('kicked', function (reason) {
+    console.log('Bot was kicked:', reason)
   })
 
-  bot.on('error', (err) => {
-    console.log('Error:', err.message)
+  bot.on('error', function (err) {
+    console.log('Bot error:', err.message)
   })
 
-  bot.on('end', () => {
+  bot.on('end', function () {
+    console.log('Bot disconnected')
+
     connected = 0
     moving = 0
     lasttime = -1
-    console.log('Disconnected. Reconnecting in 10 seconds...')
 
-    setTimeout(createBot, 10000)
+    reconnectBot()
   })
 }
 
-createBot()
+function reconnectBot() {
+  if (reconnecting) return
+
+  reconnecting = true
+
+  console.log('Reconnecting in 10 seconds...')
+
+  setTimeout(function () {
+    reconnecting = false
+    connectBot()
+  }, 10000)
+}
+
+connectBot()
