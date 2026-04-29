@@ -1,0 +1,6 @@
+{
+  "ip": "your-server.example.com",
+  "port": 25565,
+  "name": "your_bot_name",
+  "version": "1.20.1"
+}
